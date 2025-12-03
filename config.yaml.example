@@ -6,23 +6,29 @@
 # Config values are used when command-line arguments are not provided.
 # Command-line arguments always take priority over config values.
 #
+# File naming convention:
+#   {prefix}_metadata.csv    - Email metadata from search
+#   {prefix}_emails.json     - Full email data with bodies
+#   {prefix}_export.html     - Human-readable HTML export
+#   {prefix}_export.txt      - Plain text export
+#
 # Example workflow with config:
 #   1. Copy this file to your project directory and edit it
-#   2. Run: gmex search           (uses query and base_name from config)
-#   3. Run: gmex prep             (uses base_name from config)
-#   4. Run: gmex fill             (uses base_name from config)
-#   5. Run: gmex readable         (uses base_name from config)
+#   2. Run: gmex search           (uses query and prefix from config)
+#   3. Run: gmex prep             (uses prefix from config)
+#   4. Run: gmex fill             (uses prefix from config)
+#   5. Run: gmex readable         (uses prefix from config)
 #
 # You can still override any setting via command line:
-#   gmex search "label:Other" other.csv   # Ignores config query and base_name
+#   gmex search "label:Other" other_metadata.csv
 
 gmex:
   # Gmail search query (required for 'gmex search' if not provided on command line)
   query: "label:MyLabel"
 
-  # Base name for output files (without extension)
-  # Used to derive: {base_name}.csv, {base_name}.json, {base_name}-export.html, etc.
-  base_name: emails
+  # Prefix for output files (default: "emails" if not specified)
+  # Creates: {file_prefix}_metadata.csv, {file_prefix}_emails.json, etc.
+  file_prefix: emails
 
-  # Maximum number of search results to fetch (default: 500)
-  max_results: 500
+  # Maximum number of emails to fetch (default: 500)
+  max_emails: 500

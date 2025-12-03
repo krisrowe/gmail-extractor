@@ -2,21 +2,36 @@
 
 Extract Gmail messages to structured formats (CSV, JSON, HTML, TXT).
 
-## Installation
+## Prerequisites
 
-### Prerequisites
+These prerequisites are required whether you use the CLI or shell scripts.
 
-1. **Python 3.9+**
+### 1. Python 3.9+
 
-2. **gworkspace-access (gwsa)** - Required for Gmail API access:
+### 2. gworkspace-access (gwsa)
+
+gwsa provides Gmail API access and must be installed and configured before using gmex.
+
+**Install gwsa:**
+```bash
+pipx install git+https://github.com/krisrowe/gworkspace-access.git
+```
+
+**Configure authentication:**
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the Gmail API
+3. Create OAuth 2.0 credentials (Desktop application)
+4. Download `client_secrets.json` and place it in `~/.config/gworkspace-access/`
+5. Run setup and authenticate:
    ```bash
-   pipx install git+https://github.com/krisrowe/gworkspace-access.git
+   gwsa setup
+   ```
+6. Verify configuration:
+   ```bash
+   gwsa setup --status
    ```
 
-   After installation, configure authentication:
-   - Place your `client_secrets.json` from Google Cloud Console in `~/.config/gworkspace-access/`
-   - Run `gwsa setup` and follow the prompts
-   - Verify with `gwsa setup --status`
+## Installation (CLI)
 
 ### Install gmex
 
@@ -30,39 +45,51 @@ After installation, `gmex` will be available globally from any directory.
 
 ```bash
 # 1. Search Gmail and save metadata to CSV
-gmex search "label:MyLabel" emails.csv
+gmex search "label:MyLabel"
 
 # 2. Convert CSV to JSON (with placeholder bodies)
-gmex prep emails.csv emails.json
+gmex prep
 
 # 3. Fetch full email bodies from Gmail
-gmex fill emails.json
+gmex fill
 
 # 4. Export to human-readable HTML and TXT
-gmex readable emails.json
+gmex readable
 ```
+
+## File Naming Convention
+
+gmex uses a prefix-based naming convention:
+
+| File | Description |
+|------|-------------|
+| `{prefix}_metadata.csv` | Email metadata from search |
+| `{prefix}_emails.json` | Full email data with bodies |
+| `{prefix}_export.html` | Human-readable HTML export |
+| `{prefix}_export.txt` | Plain text export |
+
+Default prefix is `emails` if not specified in config.yaml.
 
 ## Configuration (Optional)
 
 You can use gmex in two ways:
 
-### Option 1: Command-line arguments only
+### Option 1: Default file names
 
-Specify all arguments directly on the command line:
+Without config.yaml, gmex uses `emails` as the default prefix:
 
 ```bash
-gmex search "label:Important" emails.csv
-gmex prep emails.csv emails.json
-gmex fill emails.json
-gmex readable emails.json
+gmex search "label:Important"    # Creates emails_metadata.csv
+gmex prep                        # Creates emails_emails.json
+gmex fill                        # Populates emails_emails.json
+gmex readable                    # Creates emails_export.html, emails_export.txt
 ```
 
 ### Option 2: Using config.yaml
 
-For repeated use with the same settings, create a `config.yaml` **in your current working directory** (the directory where you run `gmex`):
+For custom prefixes and repeated use, create a `config.yaml` **in your current working directory**:
 
 ```bash
-# Copy the example config to your project directory
 cp /path/to/gmail-extractor/config.yaml.example ./config.yaml
 ```
 
@@ -71,32 +98,33 @@ Edit `config.yaml`:
 ```yaml
 gmex:
   query: "label:MyLabel"
-  base_name: emails
-  max_results: 500
+  file_prefix: myproject
+  max_emails: 500
 ```
 
-**Important:** `config.yaml` must be in the current directory when you run `gmex`. The tool looks for it in `./config.yaml` relative to where you execute the command.
+**Important:** `config.yaml` must be in the current directory when you run `gmex`.
 
-With config.yaml present, you can omit arguments:
+With config.yaml, commands use your prefix:
 
 ```bash
-gmex search      # Uses query and base_name from config
-gmex prep        # Uses base_name from config
-gmex fill        # Uses base_name from config
-gmex readable    # Uses base_name from config
+gmex search      # Creates myproject_metadata.csv
+gmex prep        # Creates myproject_emails.json
+gmex fill        # Populates myproject_emails.json
+gmex readable    # Creates myproject_export.html, myproject_export.txt
 ```
 
-### Mixing command-line and config
+### Specifying files explicitly
 
-**Command-line arguments always take priority over config values.** You can use config.yaml as a baseline and override specific values:
+You can always specify files explicitly on the command line:
 
 ```bash
-# config.yaml has base_name: emails, but override query:
-gmex search "label:Other"              # Creates other results in emails.csv
-
-# Override everything:
-gmex search "label:Other" other.csv    # Ignores config entirely for this command
+gmex search "label:Other" other_metadata.csv
+gmex prep other_metadata.csv other_emails.json
+gmex fill other_emails.json
+gmex readable other_emails.json
 ```
+
+**Command-line arguments always take priority over config values.**
 
 ## Commands
 
@@ -105,22 +133,24 @@ gmex search "label:Other" other.csv    # Ignores config entirely for this comman
 Search Gmail and save message metadata to a CSV file.
 
 ```bash
-gmex search "label:Important" important.csv
-gmex search "label:Important" important.csv --add   # Add new messages only
-gmex search --max-results 100                       # With config.yaml
+gmex search "label:Important"                    # Use default/config prefix
+gmex search "label:Important" custom_metadata.csv  # Explicit file name
+gmex search --add                                # Add new messages to existing CSV
+gmex search --max-results 100                    # Limit results
 ```
 
 **Safety:** If files already exist, `gmex search` will fail and prompt you to either:
-- Archive existing files: `gmex archive <base_name>`
-- Add new messages only: `gmex search ... --add`
+- Archive existing files: `gmex archive`
+- Add new messages only: `gmex search --add`
 
 ### gmex prep
 
 Convert CSV metadata to JSON with placeholder bodies.
 
 ```bash
-gmex prep emails.csv emails.json
-gmex prep --dry-run                    # Preview changes (with config.yaml)
+gmex prep                                        # Use default/config prefix
+gmex prep custom_metadata.csv custom_emails.json   # Explicit file names
+gmex prep --dry-run                              # Preview changes
 ```
 
 **Idempotent:** Re-running `gmex prep` will:
@@ -133,9 +163,10 @@ gmex prep --dry-run                    # Preview changes (with config.yaml)
 Fetch and populate email bodies in the JSON file.
 
 ```bash
-gmex fill emails.json              # Process all pending messages
-gmex fill emails.json -n 3         # Process only 3 messages (for testing)
-gmex fill --dry-run                # Show plan without processing
+gmex fill                        # Use default/config prefix
+gmex fill custom_emails.json     # Explicit file name
+gmex fill -n 3                   # Process only 3 messages (for testing)
+gmex fill --dry-run              # Show plan without processing
 ```
 
 ### gmex readable
@@ -143,8 +174,9 @@ gmex fill --dry-run                # Show plan without processing
 Export emails to human-readable HTML and TXT files.
 
 ```bash
-gmex readable emails.json                  # Creates emails-export.html and emails-export.txt
-gmex readable -o my_export                 # Custom output name (with config.yaml)
+gmex readable                    # Use default/config prefix
+gmex readable custom_emails.json # Explicit file name
+gmex readable -o custom          # Custom output prefix
 ```
 
 **Requirement:** All email bodies must be populated before export. If any are pending, the command will fail and tell you to run `gmex fill` first.
@@ -154,8 +186,8 @@ gmex readable -o my_export                 # Custom output name (with config.yam
 Check the status of a JSON file (counts, date range).
 
 ```bash
-gmex check emails.json
-gmex check                         # With config.yaml
+gmex check                       # Use default/config prefix
+gmex check custom_emails.json    # Explicit file name
 ```
 
 ### gmex archive
@@ -163,8 +195,8 @@ gmex check                         # With config.yaml
 Archive existing gmex files to a timestamped tar.gz file.
 
 ```bash
-gmex archive emails                # Archives emails.csv, emails.json, etc.
-gmex archive                       # With config.yaml
+gmex archive                     # Use default/config prefix
+gmex archive custom              # Explicit prefix
 ```
 
 ## Help
@@ -183,23 +215,146 @@ gmex fill --help
 # Create a project directory
 mkdir my-email-project && cd my-email-project
 
-# Copy and edit config
+# Option A: Use config.yaml
 cp /path/to/gmail-extractor/config.yaml.example ./config.yaml
-# Edit config.yaml with your query and base_name
+# Edit config.yaml with your query and prefix
 
-# Or specify everything on command line:
-gmex search "label:Important" emails.csv
-gmex prep emails.csv emails.json
+gmex search
+gmex prep
+gmex fill -n 3      # Test with 3 messages first
+gmex check
+gmex fill           # Fill remaining
+gmex readable
 
-# Test with a few messages first
-gmex fill emails.json -n 3
-
-# Check progress
-gmex check emails.json
-
-# Fill remaining messages
-gmex fill emails.json
-
-# Export to readable formats
-gmex readable emails.json
+# Option B: Use defaults (no config needed)
+gmex search "label:Important"
+gmex prep
+gmex fill
+gmex readable
 ```
+
+## Shell Scripts (No Installation Required)
+
+If you prefer not to install the CLI, you can use the shell scripts directly.
+
+### Additional Requirements for Shell Scripts
+
+In addition to the Prerequisites above (Python 3.9+, gwsa installed and configured):
+
+- **jq** - JSON processor
+  ```bash
+  # Ubuntu/Debian
+  sudo apt install jq
+
+  # macOS
+  brew install jq
+  ```
+
+### Setup
+
+```bash
+# Clone or navigate to the gmail-extractor directory
+cd /path/to/gmail-extractor
+
+# Make scripts executable (one-time setup)
+chmod +x *.sh
+```
+
+### Quick Start (Shell Scripts)
+
+```bash
+cd /path/to/gmail-extractor
+
+# 1. Search Gmail and save metadata to CSV
+./search_to_csv.sh "label:MyLabel" my_emails_metadata.csv
+
+# 2. Convert CSV to JSON (with placeholder bodies)
+./csv_to_json.sh my_emails_metadata.csv my_emails.json
+
+# 3. Fetch full email bodies from Gmail
+./update_bodies.sh my_emails.json
+
+# 4. Check status (optional)
+./check_json.sh my_emails.json
+```
+
+### Shell Script Reference
+
+#### search_to_csv.sh
+
+Search Gmail and save message metadata to CSV.
+
+```bash
+./search_to_csv.sh "<gmail_query>" <output_csv>
+```
+
+Example:
+```bash
+./search_to_csv.sh "label:Important" important_metadata.csv
+```
+
+#### csv_to_json.sh
+
+Convert CSV metadata to JSON with placeholder bodies.
+
+```bash
+./csv_to_json.sh <input_csv> <output_json>
+```
+
+Example:
+```bash
+./csv_to_json.sh important_metadata.csv important_emails.json
+```
+
+#### update_bodies.sh
+
+Fetch and populate email bodies in the JSON file.
+
+```bash
+./update_bodies.sh <json_file> [limit]
+./update_bodies.sh --dry-run <json_file>    # Preview only
+```
+
+Examples:
+```bash
+./update_bodies.sh important_emails.json      # Process all pending
+./update_bodies.sh important_emails.json 3    # Process only 3 (for testing)
+./update_bodies.sh --dry-run important_emails.json  # Show plan
+```
+
+#### check_json.sh
+
+Check the status of a JSON file.
+
+```bash
+./check_json.sh <json_file>
+```
+
+Example:
+```bash
+./check_json.sh important_emails.json
+```
+
+### Example Workflow (Shell Scripts)
+
+```bash
+cd /path/to/gmail-extractor
+
+# Search and create CSV
+./search_to_csv.sh "label:Important" my_emails_metadata.csv
+
+# Convert to JSON
+./csv_to_json.sh my_emails_metadata.csv my_emails.json
+
+# Test with a few emails first
+./update_bodies.sh my_emails.json 3
+./check_json.sh my_emails.json
+
+# Fill remaining emails
+./update_bodies.sh my_emails.json
+
+# Verify all bodies are populated
+./check_json.sh my_emails.json
+```
+
+**Note:** The shell scripts do not include the `readable` export functionality. Use the CLI (`gmex readable`) or process the JSON file with your own tools.
