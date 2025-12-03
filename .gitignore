@@ -1,0 +1,22 @@
+# Ignore Python cache directories
+__pycache__/
+
+# Ignore temporary files
+*.tmp
+
+# Ignore backup files
+*.bak
+
+# Ignore virtual environment directories
+venv/
+
+# Ignore log files
+*.log
+
+# Ignore gwsa credential files (sensitive)
+client_secrets.json
+user_token.json
+
+# Ignore any local backup archives
+*.tar.gz
+*.zip
