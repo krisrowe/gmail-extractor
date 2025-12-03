@@ -1,22 +1,58 @@
-# Ignore Python cache directories
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Ignore temporary files
-*.tmp
-
-# Ignore backup files
-*.bak
-
-# Ignore virtual environment directories
+# Virtual environments
 venv/
+ENV/
+env/
+.venv/
 
-# Ignore log files
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary and backup files
+*.tmp
+*.bak
 *.log
 
-# Ignore gwsa credential files (sensitive)
+# Credentials (sensitive)
 client_secrets.json
 user_token.json
+*.pem
+*.key
 
-# Ignore any local backup archives
+# User data files (never commit email data)
+*.csv
+*.json
+!config.yaml.example
+*-export.html
+*-export.txt
+
+# Archives
 *.tar.gz
 *.zip
+
+# Local config (user-specific)
+config.yaml

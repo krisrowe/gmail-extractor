@@ -1,0 +1,28 @@
+# Gmail Extractor (gmex) Configuration
+#
+# Copy this file to your working directory as 'config.yaml' to set defaults:
+#   cp /path/to/gmail-extractor/config.yaml.example ./config.yaml
+#
+# Config values are used when command-line arguments are not provided.
+# Command-line arguments always take priority over config values.
+#
+# Example workflow with config:
+#   1. Copy this file to your project directory and edit it
+#   2. Run: gmex search           (uses query and base_name from config)
+#   3. Run: gmex prep             (uses base_name from config)
+#   4. Run: gmex fill             (uses base_name from config)
+#   5. Run: gmex readable         (uses base_name from config)
+#
+# You can still override any setting via command line:
+#   gmex search "label:Other" other.csv   # Ignores config query and base_name
+
+gmex:
+  # Gmail search query (required for 'gmex search' if not provided on command line)
+  query: "label:MyLabel"
+
+  # Base name for output files (without extension)
+  # Used to derive: {base_name}.csv, {base_name}.json, {base_name}-export.html, etc.
+  base_name: emails
+
+  # Maximum number of search results to fetch (default: 500)
+  max_results: 500
