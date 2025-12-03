@@ -166,7 +166,7 @@ def archive(ctx, prefix):
 
     # Create archive name with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    archive_name = f"{base_name}_archived_{timestamp}.tar.gz"
+    archive_name = f"{prefix}_archived_{timestamp}.tar.gz"
 
     click.echo()
     click.echo(f"Creating archive: {archive_name}")
@@ -367,7 +367,7 @@ def prep(ctx, input_csv, output_json, dry_run):
 
     OUTPUT_JSON is the path to the output JSON file.
 
-    Both arguments can be omitted if config.yaml provides base_name.
+    Both arguments can be omitted if config.yaml provides file_prefix.
 
     This command is idempotent:
     - If JSON exists, new IDs from CSV are added (preserving existing body data)
@@ -481,7 +481,7 @@ def fill(ctx, json_file, limit, dry_run):
     """Fetch and populate email bodies in the JSON file.
 
     JSON_FILE is the JSON file created by 'gmex prep'.
-    Can be omitted if config.yaml provides base_name.
+    Can be omitted if config.yaml provides file_prefix.
 
     \b
     Examples:
@@ -602,7 +602,7 @@ def readable(ctx, json_file, output):
     """Export emails to human-readable HTML and TXT files.
 
     JSON_FILE is the JSON file with populated bodies (from 'gmex fill').
-    Can be omitted if config.yaml provides base_name.
+    Can be omitted if config.yaml provides file_prefix.
 
     Creates two files: <basename>-export.html and <basename>-export.txt
 
