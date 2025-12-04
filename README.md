@@ -2,15 +2,28 @@
 
 Extract Gmail messages to structured formats (CSV, JSON, HTML, TXT).
 
-## Prerequisites
+## Quick Start
 
-These prerequisites are required whether you use the CLI or shell scripts.
+```bash
+pipx install git+https://github.com/krisrowe/gmail-extractor.git
+```
 
-### 1. Python 3.9+
+**Prerequisite:** [gwsa](https://github.com/krisrowe/gworkspace-access) must be installed and configured first. See [gwsa setup](#gwsa-setup) below.
 
-### 2. gworkspace-access (gwsa)
+After installation, `gmex` is available globally:
 
-gwsa provides Gmail API access and must be installed and configured before using gmex.
+```bash
+gmex search "label:MyLabel"
+gmex prep
+gmex fill
+gmex readable
+```
+
+---
+
+## gwsa Setup
+
+gmex depends on [gwsa](https://github.com/krisrowe/gworkspace-access) for Gmail API access.
 
 **Install gwsa:**
 ```bash
@@ -21,41 +34,19 @@ pipx install git+https://github.com/krisrowe/gworkspace-access.git
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable the Gmail API
 3. Create OAuth 2.0 credentials (Desktop application)
-4. Download `client_secrets.json` and place it in `~/.config/gworkspace-access/`
+4. Download the credentials JSON and place in `~/.config/gworkspace-access/credentials.json`
 5. Run setup and authenticate:
    ```bash
    gwsa setup
    ```
-6. Verify configuration:
+6. Verify:
    ```bash
    gwsa setup --status
    ```
 
-## Installation (CLI)
+For detailed gwsa configuration, see the [gwsa README](https://github.com/krisrowe/gworkspace-access).
 
-### Install gmex
-
-```bash
-pipx install /path/to/gmail-extractor
-```
-
-After installation, `gmex` will be available globally from any directory.
-
-## Quick Start
-
-```bash
-# 1. Search Gmail and save metadata to CSV
-gmex search "label:MyLabel"
-
-# 2. Convert CSV to JSON (with placeholder bodies)
-gmex prep
-
-# 3. Fetch full email bodies from Gmail
-gmex fill
-
-# 4. Export to human-readable HTML and TXT
-gmex readable
-```
+---
 
 ## File Naming Convention
 

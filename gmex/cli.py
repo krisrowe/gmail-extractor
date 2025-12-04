@@ -284,6 +284,17 @@ def search(ctx, query, output_csv, max_results, add):
             return
         search_results = new_results
 
+    # Sort by date (newest first)
+    from email.utils import parsedate_to_datetime
+
+    def parse_date(msg):
+        try:
+            return parsedate_to_datetime(msg.get("date", ""))
+        except:
+            return None
+
+    search_results = sorted(search_results, key=lambda x: parse_date(x) or "", reverse=True)
+
     # Write CSV
     mode = "a" if add and output_path.exists() else "w"
     write_header = not (add and output_path.exists())
@@ -546,6 +557,9 @@ def fill(ctx, json_file, limit, dry_run):
     id_to_index = {item["id"]: i for i, item in enumerate(data)}
 
     processed_in_run = 0
+    text_only_ids = []
+    html_only_ids = []
+
     for i, msg_id in enumerate(ids_to_process, 1):
         click.echo(f"Processing message {i} of {len(ids_to_process)}: {msg_id}")
 
@@ -569,17 +583,87 @@ def fill(ctx, json_file, limit, dry_run):
         # Update the body in our data
         idx = id_to_index.get(msg_id)
         if idx is not None:
-            data[idx]["body"] = message_payload.get("body", {})
+            # Validate that fetched message matches our metadata exactly
+            existing = data[idx]
+
+            # Helper to normalize empty values
+            def normalize(val):
+                if val is None or val == "N/A":
+                    return ""
+                return val
+
+            # Validate all metadata fields - both must be empty or both must match
+            validation_errors = []
+
+            # Date (required field)
+            fetched_date = normalize(message_payload.get("date"))
+            existing_date = normalize(existing.get("date"))
+            if fetched_date != existing_date:
+                validation_errors.append(("date", existing_date, fetched_date))
+
+            # Subject
+            fetched_subject = normalize(message_payload.get("subject"))
+            existing_subject = normalize(existing.get("subject"))
+            if fetched_subject != existing_subject:
+                validation_errors.append(("subject", existing_subject, fetched_subject))
+
+            # From
+            fetched_from = normalize(message_payload.get("from"))
+            existing_from = normalize(existing.get("from"))
+            if fetched_from != existing_from:
+                validation_errors.append(("from", existing_from, fetched_from))
+
+            # To
+            fetched_to = normalize(message_payload.get("to"))
+            existing_to = normalize(existing.get("to"))
+            if fetched_to != existing_to:
+                validation_errors.append(("to", existing_to, fetched_to))
+
+            if validation_errors:
+                click.echo(f"  ERROR: Metadata mismatch for message {msg_id}!", err=True)
+                for field, expected, got in validation_errors:
+                    click.echo(f"    {field}:", err=True)
+                    click.echo(f"      JSON:    '{expected}'", err=True)
+                    click.echo(f"      Fetched: '{got}'", err=True)
+                click.echo("Aborting to prevent data corruption.", err=True)
+                sys.exit(1)
+
+            # Validation passed - update body only
+            body = message_payload.get("body", {})
+            data[idx]["body"] = body
             processed_in_run += 1
 
-            body_length = len(message_payload.get("body", {}).get("text", "") or "")
-            click.echo(f"  Updated: {message_payload.get('date', 'N/A')} | {body_length} chars")
+            # Track body type for summary
+            has_text = bool((body.get("text") or "").strip()) if isinstance(body, dict) else False
+            has_html = bool((body.get("html") or "").strip()) if isinstance(body, dict) else False
+
+            if has_text and not has_html:
+                text_only_ids.append(msg_id)
+            elif has_html and not has_text:
+                html_only_ids.append(msg_id)
+
+            body_length = len(body.get("text", "") or "") if isinstance(body, dict) else 0
+            click.echo(f"  Updated: {fetched_date} | {body_length} chars")
 
     # Save updated JSON
     with open(json_file, "w") as f:
         json.dump(data, f, indent=2)
 
     click.echo()
+
+    # Report body type issues
+    if html_only_ids:
+        click.echo(f"HTML-only bodies ({len(html_only_ids)} messages - will be converted to text for TXT export):")
+        for mid in html_only_ids:
+            click.echo(f"  - {mid}")
+        click.echo()
+
+    if text_only_ids:
+        click.echo(f"Text-only bodies ({len(text_only_ids)} messages - no HTML version available):")
+        for mid in text_only_ids:
+            click.echo(f"  - {mid}")
+        click.echo()
+
     click.echo("Run Summary:")
     click.echo(f"  Messages updated in this run: {processed_in_run}")
 
@@ -658,23 +742,64 @@ def readable(ctx, json_file, output):
     sorted_data = sorted(data, key=lambda x: parse_date(x) or "", reverse=True)
 
     # Generate HTML
-    html_content = generate_html(sorted_data)
+    html_content, text_only_ids = generate_html(sorted_data)
     with open(html_file, "w") as f:
         f.write(html_content)
     click.echo(f"  Created: {html_file}")
 
     # Generate TXT
-    txt_content = generate_txt(sorted_data)
+    txt_content, html_only_ids = generate_txt(sorted_data)
     with open(txt_file, "w") as f:
         f.write(txt_content)
     click.echo(f"  Created: {txt_file}")
 
     click.echo()
+
+    # Report conversions with ID lists
+    if text_only_ids:
+        click.echo(f"Text-only bodies ({len(text_only_ids)} messages - escaped text used in HTML export):")
+        for msg_id in text_only_ids:
+            click.echo(f"  - {msg_id}")
+        click.echo()
+
+    if html_only_ids:
+        click.echo(f"HTML-only bodies ({len(html_only_ids)} messages - converted to text for TXT export):")
+        for msg_id in html_only_ids:
+            click.echo(f"  - {msg_id}")
+        click.echo()
+
     click.echo("Export complete.")
 
 
+def strip_html_tags(html_content):
+    """Extract plain text from HTML by stripping tags."""
+    import re
+    # Remove script and style elements
+    text = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    # Replace br and p tags with newlines
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</p>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</div>', '\n', text, flags=re.IGNORECASE)
+    # Remove all remaining tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Decode HTML entities
+    import html as html_module
+    text = html_module.unescape(text)
+    # Clean up whitespace
+    text = re.sub(r'\n\s*\n', '\n\n', text)
+    return text.strip()
+
+
 def generate_html(data):
-    """Generate HTML export of emails."""
+    """Generate HTML export of emails.
+
+    Uses the original HTML body from Gmail when available. Falls back to
+    text body (escaped and wrapped in pre-wrap styling) if no HTML body exists.
+
+    Returns tuple of (html_content, text_only_ids) where text_only_ids is a list
+    of message IDs that had only text body (no HTML version, so text was escaped).
+    """
     import html
 
     lines = [
@@ -689,7 +814,8 @@ def generate_html(data):
         ".email-header { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }",
         ".email-meta { color: #666; font-size: 14px; margin: 4px 0; }",
         ".email-subject { font-size: 18px; font-weight: 600; margin: 0 0 10px 0; }",
-        ".email-body { white-space: pre-wrap; font-family: inherit; line-height: 1.6; }",
+        ".email-body { line-height: 1.6; }",
+        ".email-body-text { white-space: pre-wrap; font-family: inherit; }",
         ".email-index { color: #999; font-size: 12px; float: right; }",
         "</style>",
         "</head>",
@@ -697,18 +823,34 @@ def generate_html(data):
         f"<h1>Email Export ({len(data)} messages)</h1>",
     ]
 
+    text_only_ids = []
+
     for i, item in enumerate(data, 1):
         subject = html.escape(item.get("subject", "") or "(No Subject)")
         from_addr = html.escape(item.get("from", ""))
         to_addr = html.escape(item.get("to", ""))
         date = html.escape(item.get("date", ""))
+        msg_id = item.get("id", "")
 
         body_obj = item.get("body", {})
         if isinstance(body_obj, dict):
             body_text = body_obj.get("text", "") or ""
+            body_html = body_obj.get("html", "") or ""
         else:
             body_text = str(body_obj)
-        body_text = html.escape(body_text)
+            body_html = ""
+
+        # Prefer HTML body, fall back to escaped text
+        if body_html.strip():
+            # Use original HTML body directly
+            body_content = f"<div class=\"email-body\">{body_html}</div>"
+        elif body_text.strip():
+            # Fall back to escaped text with pre-wrap
+            body_content = f"<div class=\"email-body email-body-text\">{html.escape(body_text)}</div>"
+            if msg_id:
+                text_only_ids.append(msg_id)
+        else:
+            body_content = "<div class=\"email-body\">(No body)</div>"
 
         lines.extend([
             "<div class=\"email\">",
@@ -719,7 +861,7 @@ def generate_html(data):
             f"<p class=\"email-meta\"><strong>To:</strong> {to_addr}</p>",
             f"<p class=\"email-meta\"><strong>Date:</strong> {date}</p>",
             "</div>",
-            f"<div class=\"email-body\">{body_text}</div>",
+            body_content,
             "</div>",
         ])
 
@@ -728,28 +870,43 @@ def generate_html(data):
         "</html>",
     ])
 
-    return "\n".join(lines)
+    return "\n".join(lines), text_only_ids
 
 
 def generate_txt(data):
-    """Generate plain text export of emails."""
+    """Generate plain text export of emails.
+
+    Returns tuple of (content, degraded_ids) where degraded_ids is a list of
+    message IDs that had to be converted from HTML to text.
+    """
     lines = [
         f"EMAIL EXPORT ({len(data)} messages)",
         "=" * 80,
         "",
     ]
 
+    degraded_ids = []
+
     for i, item in enumerate(data, 1):
         subject = item.get("subject", "") or "(No Subject)"
         from_addr = item.get("from", "")
         to_addr = item.get("to", "")
         date = item.get("date", "")
+        msg_id = item.get("id", "")
 
         body_obj = item.get("body", {})
         if isinstance(body_obj, dict):
             body_text = body_obj.get("text", "") or ""
+            body_html = body_obj.get("html", "") or ""
         else:
             body_text = str(body_obj)
+            body_html = ""
+
+        # If no text body, try to extract from HTML
+        if not body_text.strip() and body_html.strip():
+            body_text = strip_html_tags(body_html)
+            if msg_id:
+                degraded_ids.append(msg_id)
 
         lines.extend([
             f"[{i}] {subject}",
@@ -764,7 +921,18 @@ def generate_txt(data):
             "",
         ])
 
-    return "\n".join(lines)
+    # Add degraded emails summary at the end if any
+    if degraded_ids:
+        lines.extend([
+            "",
+            f"NOTE: {len(degraded_ids)} email(s) were converted from HTML to plain text:",
+            "-" * 80,
+        ])
+        for msg_id in degraded_ids:
+            lines.append(f"  - {msg_id}")
+        lines.append("")
+
+    return "\n".join(lines), degraded_ids
 
 
 @cli.command()
@@ -864,13 +1032,48 @@ def parse(ctx, txt_file, output):
         content = f.read()
 
     emails = parse_txt_export(content)
-    click.echo(f"  Found {len(emails)} emails.")
 
     # Write JSON output
     with open(output, "w") as f:
         json.dump(emails, f, indent=2)
 
     click.echo(f"  Created: {output}")
+    click.echo()
+
+    # TXT stats
+    calculate_export_stats(emails, "TXT Export")
+
+    # Check for HTML export and merge body.html into parsed data
+    html_file = txt_file.replace("_export.txt", "_export.html")
+    if Path(html_file).exists():
+        click.echo()
+        with open(html_file, "r") as f:
+            html_content = f.read()
+        html_emails = parse_html_export(html_content)
+        calculate_export_stats(html_emails, "HTML Export")
+
+        # Merge HTML bodies into TXT-parsed emails (match by index since both are same order)
+        if len(emails) == len(html_emails):
+            for i, html_email in enumerate(html_emails):
+                html_body = html_email.get("body", {}).get("html")
+                if html_body:
+                    emails[i]["body"]["html"] = html_body
+                else:
+                    emails[i]["body"]["html"] = None
+
+            # Re-write the merged JSON
+            with open(output, "w") as f:
+                json.dump(emails, f, indent=2)
+            click.echo()
+            click.echo(f"  Merged HTML bodies into: {output}")
+        else:
+            click.echo()
+            click.echo(f"  Warning: Email count mismatch (TXT: {len(emails)}, HTML: {len(html_emails)}). HTML bodies not merged.")
+    else:
+        click.echo()
+        click.echo("HTML Export Stats:")
+        click.echo(f"  File not found: {html_file}")
+
     click.echo()
     click.echo("To verify the export was faithful:")
     click.echo(f"  gmex verify")
@@ -972,6 +1175,110 @@ def parse_txt_export(content):
     return emails
 
 
+def parse_html_export(content):
+    """Parse the HTML export format back to a list of email dicts.
+
+    Distinguishes between emails that had HTML body (class="email-body") and
+    text-only emails (class="email-body email-body-text"). For HTML bodies,
+    stores the raw HTML. For text-only, unescapes to get original text.
+    """
+    import re
+    import html as html_module
+
+    emails = []
+
+    # Find all email divs - match header info and body class, then extract body separately
+    email_pattern = re.compile(
+        r'<div class="email">.*?<h2 class="email-subject">(.*?)</h2>.*?'
+        r'<strong>From:</strong>\s*(.*?)</p>.*?'
+        r'<strong>To:</strong>\s*(.*?)</p>.*?'
+        r'<strong>Date:</strong>\s*(.*?)</p>.*?'
+        r'<div class="(email-body[^"]*)">(.*?)</div>\n</div>',
+        re.DOTALL
+    )
+
+    for match in email_pattern.finditer(content):
+        subject = html_module.unescape(match.group(1).strip())
+        from_addr = html_module.unescape(match.group(2).strip())
+        to_addr = html_module.unescape(match.group(3).strip())
+        date = html_module.unescape(match.group(4).strip())
+        body_class = match.group(5)
+        body_content = match.group(6).strip()
+
+        if subject == "(No Subject)":
+            subject = ""
+
+        # Check if this was a text-only email (has email-body-text class)
+        is_text_only = "email-body-text" in body_class
+
+        if is_text_only:
+            # Text-only: unescape to get original text
+            emails.append({
+                "subject": subject,
+                "from": from_addr,
+                "to": to_addr,
+                "date": date,
+                "body": {
+                    "text": html_module.unescape(body_content),
+                    "html": None
+                }
+            })
+        else:
+            # HTML body: keep as-is (it's the original HTML from Gmail)
+            emails.append({
+                "subject": subject,
+                "from": from_addr,
+                "to": to_addr,
+                "date": date,
+                "body": {
+                    "text": None,
+                    "html": body_content
+                }
+            })
+
+    return emails
+
+
+def calculate_export_stats(emails, label):
+    """Calculate and display stats for a list of parsed emails."""
+    from email.utils import parsedate_to_datetime
+
+    if not emails:
+        click.echo(f"{label} Stats:")
+        click.echo("  No emails found.")
+        return
+
+    # Body length stats
+    body_lengths = []
+    for email in emails:
+        body = email.get("body", {})
+        if isinstance(body, dict):
+            text = body.get("text", "") or ""
+        else:
+            text = str(body)
+        body_lengths.append(len(text))
+
+    # Date stats
+    parsed_dates = []
+    for email in emails:
+        try:
+            dt = parsedate_to_datetime(email.get("date", ""))
+            parsed_dates.append((dt, email.get("date")))
+        except:
+            pass
+
+    click.echo(f"{label} Stats:")
+    click.echo(f"  Total emails: {len(emails)}")
+    click.echo(f"  Emails with body: {sum(1 for l in body_lengths if l > 0)}")
+    if body_lengths:
+        click.echo(f"  Body length min: {min(body_lengths)} chars")
+        click.echo(f"  Body length max: {max(body_lengths)} chars")
+    if parsed_dates:
+        parsed_dates.sort()
+        click.echo(f"  Earliest: {parsed_dates[0][1]}")
+        click.echo(f"  Latest: {parsed_dates[-1][1]}")
+
+
 @cli.command()
 @click.argument("json_file", type=click.Path(), required=False)
 @click.argument("parsed_file", type=click.Path(), required=False)
@@ -1052,26 +1359,38 @@ def verify(ctx, json_file, parsed_file):
         if orig.get("date", "") != pars.get("date", ""):
             email_diffs.append(f"date: '{orig.get('date', '')}' vs '{pars.get('date', '')}'")
 
-        # Compare body text (normalize line endings)
+        # Compare body text and html (normalize line endings)
         orig_body = orig.get("body", {})
         if isinstance(orig_body, dict):
             orig_text = orig_body.get("text", "") or ""
+            orig_html = orig_body.get("html", "") or ""
         else:
             orig_text = str(orig_body)
+            orig_html = ""
         orig_text = orig_text.replace("\r\n", "\n").strip()
+        orig_html = orig_html.replace("\r\n", "\n").strip()
 
         pars_body = pars.get("body", {})
         if isinstance(pars_body, dict):
             pars_text = pars_body.get("text", "") or ""
+            pars_html = pars_body.get("html", "") or ""
         else:
             pars_text = str(pars_body)
+            pars_html = ""
         pars_text = pars_text.strip()
+        pars_html = pars_html.strip()
 
         if orig_text != pars_text:
             # Find first difference location
             min_len = min(len(orig_text), len(pars_text))
             diff_pos = next((j for j in range(min_len) if orig_text[j] != pars_text[j]), min_len)
-            email_diffs.append(f"body differs at char {diff_pos}")
+            email_diffs.append(f"body.text differs at char {diff_pos} (orig: {len(orig_text)}, parsed: {len(pars_text)})")
+
+        # Compare body HTML
+        if orig_html != pars_html:
+            min_len = min(len(orig_html), len(pars_html))
+            diff_pos = next((j for j in range(min_len) if orig_html[j] != pars_html[j]), min_len)
+            email_diffs.append(f"body.html differs at char {diff_pos} (orig: {len(orig_html)}, parsed: {len(pars_html)})")
 
         if email_diffs:
             differences.append((i, orig.get("subject", "(No Subject)"), email_diffs))
@@ -1091,7 +1410,7 @@ def verify(ctx, json_file, parsed_file):
     else:
         click.echo()
         click.echo(f"  Compared {len(original_sorted)} emails.")
-        click.echo("  All fields match (subject, from, to, date, body text).")
+        click.echo("  All fields match (subject, from, to, date, body.text, body.html).")
         click.echo()
         click.echo("VERIFICATION PASSED")
 
