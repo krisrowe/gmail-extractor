@@ -1,4 +1,4 @@
-.PHONY: test test-archive test-e2e dev build fetch
+.PHONY: test test-archive test-gmex test-e2e dev build fetch
 
 dev:
 	pip install -e ./email-archive -e ./gmex-sdk -e ./gmex-cli
@@ -23,4 +23,5 @@ fetch:
 	  gmex-fetcher:latest
 
 test-e2e: build
-	python3 scripts/test_docker_e2e.py
+	@chmod +x ./scripts/test_e2e.sh
+	./scripts/test_e2e.sh
