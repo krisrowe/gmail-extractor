@@ -31,8 +31,8 @@ def token():
 @token.command("show")
 def token_show():
     status = get_token_status()
-    click.echo(f"Expected Path: {status['path']}", err=True)
-    if status["exists"]: click.echo(f"Status: FOUND ({status['size']} bytes)", err=True)
+    click.echo(f"Expected Path: {status[path]}", err=True)
+    if status["exists"]: click.echo(f"Status: FOUND ({status["size"]} bytes)", err=True)
     else: click.echo("Status: MISSING", err=True)
 
 @token.command("import")
@@ -59,19 +59,21 @@ def fetch(ctx, query, limit):
         click.secho("Error: Not authenticated.", fg="red", err=True)
         sys.exit(1)
 
-    click.echo(f"Initializing fetch...", err=True)
+    logger.info("Fetcher: Cycle started.")
     try:
         messages = extractor.search(query, limit)
     except Exception as e:
-        click.secho(f"Search failed: {e}", fg="red", err=True)
+        logger.error(f"Fetcher: Search failed: {e}")
         sys.exit(1)
 
     new_messages = [msg for msg in messages if not store.exists(msg.get("id"))]
-    click.echo(f"Found {len(messages)} messages. New: {len(new_messages)}", err=True)
+    logger.info(f"Fetcher: Discovery complete. (Total: {len(messages)}, New: {len(new_messages)})")
     
     if not new_messages:
+        logger.info("Fetcher: Cycle idle. (No new messages found)")
         return
 
+    success_count = 0
     with click.progressbar(new_messages, label="Fetching") as bar:
         for msg in bar:
             try:
@@ -97,9 +99,12 @@ def fetch(ctx, query, limit):
                     "attachments": full_email.get("attachments", []) 
                 }
                 store.save(msg_id, dt, headers, content)
-            except Exception as e: logger.error(f"Failed to fetch {msg_id}: {e}")
+                logger.info(f"Fetcher: Stored email {msg_id}")
+                success_count += 1
+            except Exception as e: 
+                logger.error(f"Fetcher: Failed to fetch {msg_id}: {e}")
 
-    click.echo("Fetch complete.", err=True)
+    logger.info(f"Fetcher: Cycle completed. (Processed: {success_count}/{len(new_messages)})")
 
 def main(): cli()
 if __name__ == "__main__": main()
