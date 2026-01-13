@@ -19,15 +19,16 @@ def test_save_and_get_full(tmp_path):
     data = store.get(msg_id, include_content=True)
     assert data["id"] == msg_id and data["body_text"] == "Hello"
 
-def test_attach_sidecar(tmp_path):
+def test_save_sidecar(tmp_path):
     store = EmailStore(tmp_path)
-    msg_id, date = "msg_attach", datetime.now()
+    msg_id, date = "msg_sidecar", datetime.now()
     store.save(msg_id, date, {}, {})
-    analysis = {"status": "archived"}
-    store.attach(msg_id, "analysis.json", analysis)
-    matches = list(tmp_path.glob("*_msg_attach.analysis.json"))
-    assert len(matches) == 1
-    with open(matches[0]) as f: assert json.load(f)["status"] == "archived"
+    data = {"status": "archived"}
+    # Verify the new method name
+    store.save_sidecar(msg_id, "processed.json", data)
+    assert store.has_sidecar(msg_id, "processed.json")
+    loaded = store.get_sidecar(msg_id, "processed.json")
+    assert loaded["status"] == "archived"
 
 def test_save_and_get_metadata_only(tmp_path):
     store = EmailStore(tmp_path)
