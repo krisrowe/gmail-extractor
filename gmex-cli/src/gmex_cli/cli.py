@@ -32,7 +32,7 @@ def token():
 def token_show():
     status = get_token_status()
     click.echo(f"Expected Path: {status[path]}", err=True)
-    if status["exists"]: click.echo(f"Status: FOUND ({status["size"]} bytes)", err=True)
+    if status["exists"]: click.echo(f"Status: FOUND ({status['size']} bytes)", err=True)
     else: click.echo("Status: MISSING", err=True)
 
 @token.command("import")

@@ -1,11 +1,22 @@
-.PHONY: test test-archive test-gmex test-e2e dev build fetch
+.PHONY: test dev build fetch install
 
+# Install gmex CLI globally via pipx with local dependencies
+install:
+	@echo "Installing gmex-cli via pipx..."
+	pipx install ./gmex-cli --force
+	@echo "Injecting local dependencies..."
+	pipx runpip gmex-cli install -e ./email-archive -e ./gmex-sdk
+	@echo "Done. Run 'gmex --help' to verify."
+
+# Dev setup (editable installs for development)
 dev:
 	pip install -e ./email-archive -e ./gmex-sdk -e ./gmex-cli
 
+# Run tests
 test:
 	PYTHONPATH=email-archive/src pytest -s --log-cli-level=INFO email-archive/tests
 
+# Build Docker image
 build:
 	@if [ "$$VERBOSE" = "1" ]; then \
 		echo "Building Docker image..."; \
@@ -16,6 +27,7 @@ build:
 		echo "OK."; \
 	fi
 
+# Fetch emails using Docker
 fetch:
 	@export GMEX_ENV=$$(PYTHONPATH=gmex-sdk/src:email-archive/src python3 -m gmex_sdk.paths); \
 	eval $$GMEX_ENV; \
@@ -28,7 +40,3 @@ fetch:
 	  -e GMEX_QUERY \
 	  -e GMEX_LIMIT \
 	  gmex-fetcher:latest
-
-test-e2e: build
-	@chmod +x ./scripts/test_e2e.sh
-	@./scripts/test_e2e.sh

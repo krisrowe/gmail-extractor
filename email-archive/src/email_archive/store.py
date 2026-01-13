@@ -9,6 +9,8 @@ from typing import Dict, List, Optional, Any, Union
 logger = logging.getLogger(__name__)
 
 class EmailStore:
+    def exists(self, message_id: str) -> bool:
+        return any(self.root.glob(f"*_{message_id}.meta"))
     def __init__(self, root_dir: Union[str, Path, None] = None):
         if root_dir is None:
             if env_path := os.environ.get("EMAIL_ARCHIVE_DATA_DIR"):
@@ -61,6 +63,10 @@ class EmailStore:
         try:
             return any(self.root.glob(f"*_{message_id}.{key}"))
         except: return False
+
+    def exists(self, message_id: str) -> bool:
+        """Check if an email metadata file exists for the given ID."""
+        return any(self.root.glob(f"*_{message_id}.meta"))
 
     def get_sidecar(self, message_id: str, key: str) -> Optional[Any]:
         try:
