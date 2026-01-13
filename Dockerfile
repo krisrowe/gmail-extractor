@@ -18,4 +18,4 @@ RUN pip install -e ./gmex-cli
 # --- Fetcher Stage ---
 FROM base as fetcher
 # Default command (can be overridden)
-CMD ["gmex", "sync"]
+CMD ["gmex", "fetch"]

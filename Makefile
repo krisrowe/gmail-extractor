@@ -1,33 +1,26 @@
-.PHONY: test test-archive test-gmex test-e2e install dev deploy-local
+.PHONY: test test-archive test-e2e dev build fetch
 
-# Install all packages in editable mode
 dev:
 	pip install -e ./email-archive -e ./gmex-sdk -e ./gmex-cli
 
-# Run all tests
-test: test-archive test-gmex
-
-# Run archive tests
-test-archive:
+test:
 	PYTHONPATH=email-archive/src pytest -s --log-cli-level=INFO email-archive/tests
 
-# Run gmex tests (to be implemented)
-test-gmex:
-	@echo "Running gmex tests..."
-	@echo "No tests implemented for gmex-sdk or gmex-cli yet."
+build:
+	docker build -t gmex-fetcher:latest .
 
-# Run End-to-End Docker Test
-test-e2e:
-	@echo "Running E2E integration test..."
+fetch:
+	@export GMEX_ENV=$$(PYTHONPATH=gmex-sdk/src:email-archive/src python3 -m gmex_sdk.paths); \
+	eval $$GMEX_ENV; \
+	docker run --rm \
+	  --user $$(id -u):$$(id -g) \
+	  -v $$EMAIL_ARCHIVE_DATA_DIR:/data \
+	  -v $$GOOGLE_APPLICATION_CREDENTIALS:/app/creds.json:ro \
+	  -e EMAIL_ARCHIVE_DATA_DIR=/data \
+	  -e GOOGLE_APPLICATION_CREDENTIALS=/app/creds.json \
+	  -e GMEX_QUERY \
+	  -e GMEX_LIMIT \
+	  gmex-fetcher:latest
+
+test-e2e: build
 	python3 scripts/test_docker_e2e.py
-
-# Run local deployment via Docker Compose
-deploy-local:
-	@if [ -z "$(DATA_DIR)" ]; then \
-		echo "Error: DATA_DIR env var required (e.g., make deploy-local DATA_DIR=/tmp/emails)"; \
-		exit 1; \
-	fi
-	@echo "Deploying locally with data at: $(DATA_DIR)"
-	DATA_DIR=$(DATA_DIR) docker compose up -d --build
-	@echo "Fetcher service started. Logs:"
-	DATA_DIR=$(DATA_DIR) docker compose logs -f
