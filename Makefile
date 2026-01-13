@@ -7,7 +7,14 @@ test:
 	PYTHONPATH=email-archive/src pytest -s --log-cli-level=INFO email-archive/tests
 
 build:
-	docker build -t gmex-fetcher:latest .
+	@if [ "$$VERBOSE" = "1" ]; then \
+		echo "Building Docker image..."; \
+		docker build -t gmex-fetcher:latest . ; \
+	else \
+		echo -n "Building Docker image... "; \
+		docker build -t gmex-fetcher:latest . > /dev/null 2>&1 || (docker build -t gmex-fetcher:latest . && exit 1); \
+		echo "OK."; \
+	fi
 
 fetch:
 	@export GMEX_ENV=$$(PYTHONPATH=gmex-sdk/src:email-archive/src python3 -m gmex_sdk.paths); \
@@ -24,4 +31,4 @@ fetch:
 
 test-e2e: build
 	@chmod +x ./scripts/test_e2e.sh
-	./scripts/test_e2e.sh
+	@./scripts/test_e2e.sh
