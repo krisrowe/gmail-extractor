@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gmex-cli"
+version = "0.2.0"
+description = "Gmail Extractor CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "gmex-sdk",
+    "click"
+]
+
+[project.scripts]
+gmex = "gmex_cli.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
