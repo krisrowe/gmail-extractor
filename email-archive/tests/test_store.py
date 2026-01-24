@@ -42,7 +42,7 @@ def test_list_chronological(tmp_path):
     d1, d2 = datetime(2026, 1, 1), datetime(2026, 1, 2)
     store.save("b", d2, {}, {})
     store.save("a", d1, {}, {})
-    items = store.list()
+    items = store.list("2026-01-01", "2026-01-02", "UTC")
     assert [i["id"] for i in items] == ["a", "b"]
 
 def test_save_and_retrieve_complex_headers(tmp_path):
@@ -60,3 +60,23 @@ def test_atomic_overwrite(tmp_path):
     store.save(msg_id, date, {"S": "v2"}, {"v": 2})
     data = store.get(msg_id, include_content=True)
     assert data["s"] == "v2" and data["v"] == 2
+
+
+def test_save_normalizes_to_utc(tmp_path):
+    """Save() normalizes timezone-aware timestamps to UTC in filenames."""
+    from zoneinfo import ZoneInfo
+
+    store = EmailStore(tmp_path)
+
+    # Jan 15, 2026 at 10:00 PM Chicago = Jan 16, 2026 at 4:00 AM UTC
+    chicago_tz = ZoneInfo("America/Chicago")
+    local_dt = datetime(2026, 1, 15, 22, 0, 0, tzinfo=chicago_tz)
+
+    store.save("utc-test", local_dt, {"Subject": "Test"}, {})
+
+    meta_files = list(tmp_path.glob("*.meta"))
+    assert len(meta_files) == 1
+
+    filename = meta_files[0].name
+    # UTC is 4:00 AM on Jan 16
+    assert filename == "20260116-040000_utc-test.meta", f"Expected UTC filename, got: {filename}"

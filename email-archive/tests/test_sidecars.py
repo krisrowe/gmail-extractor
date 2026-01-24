@@ -9,25 +9,24 @@ from email_archive import EmailStore
 
 def test_sidecar_lifecycle(tmp_path):
     store = EmailStore(tmp_path)
-    
+
     # 1. Setup email
     msg_id = "lifecycle_test"
     date = datetime(2026, 1, 12, 15, 0, 0)
     store.save(msg_id, date, {"Subject": "Main"}, {"body": "Content"})
-    
+
     # 2. Initially no sidecar
-    # Use the new discovery logic
-    items = store.list(sidecar_missing="processed.json")
+    items = store.list("2026-01-12", "2026-01-12", "UTC", sidecar_missing="processed.json")
     assert len(items) == 1
-    
+
     # 3. Save sidecar
     processing_data = {"status": "success", "engine": "gemini"}
     store.save_sidecar(msg_id, "processed.json", processing_data)
-    
+
     # 4. Verify existence via list filtering
-    items_after = store.list(sidecar_missing="processed.json")
+    items_after = store.list("2026-01-12", "2026-01-12", "UTC", sidecar_missing="processed.json")
     assert len(items_after) == 0
-    
+
     # 5. Retrieve and verify content
     loaded = store.get_sidecar(msg_id, "processed.json")
     assert loaded["status"] == "success"
