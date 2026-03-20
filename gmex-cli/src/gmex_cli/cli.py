@@ -5,7 +5,7 @@ import sys
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from email_archive import EmailStore
 from gmex_sdk.extractor import GmailExtractor
 from gmex_sdk.config import get_token_status, import_token
@@ -83,7 +83,10 @@ def fetch(ctx, query, limit):
                 try:
                     from email.utils import parsedate_to_datetime
                     dt = parsedate_to_datetime(date_str)
-                except: dt = datetime.now()
+                    # Normalize to UTC for consistent filename timestamps
+                    dt = dt.astimezone(timezone.utc)
+                except:
+                    dt = datetime.now(timezone.utc)
                 
                 headers = {
                     "Subject": full_email.get("subject", ""),
